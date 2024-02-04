@@ -1,0 +1,83 @@
+---
+name: "Rachel Spellenberg (she/her)"
+date: "February 3, 2024"
+class: "EDS 240"
+---
+
+```{r}
+# load in packages ----
+library(tidyverse)
+library(janitor)
+library(here)
+
+# read in data ----
+food_emissions_raw <- read_csv(here("data/EDGAR-FOOD_v6_GHG FOOD system emi.csv"))
+
+```
+
+```{r}
+# data wrangling ----------
+
+food_emissions <- food_emissions_raw %>% 
+  
+  # snake case column headers
+  clean_names() %>% 
+  
+  # tidy up!
+  pivot_longer(cols = 3:31,
+               names_to = "year",
+               values_to = "emissions_kt_co2e") %>% 
+  
+  # rename first two columns
+  rename(country_code = country_code_a3,
+         country = name) %>% 
+  
+  # remove y_ from each observation and change class to numeric
+  mutate(year = as.numeric(str_remove_all(year, "y_"))) %>% 
+  
+  # round the values in the emissions_kt_co2e column
+  mutate(emissions_kt_co2e = round(emissions_kt_co2e, 2))
+  
+```
+
+```{r}
+# scatter plot to see what we're working with
+plot1 <- ggplot(food_emissions, aes(x = year, y = emissions_kt_co2e)) +
+  
+  geom_point()
+
+plot1
+
+# add in color by country
+plot2 <- ggplot(food_emissions, aes(x = year, y = emissions_kt_co2e, color = country)) +
+  
+  geom_point()
+
+plot2
+
+# line graph of US food emissions from 1990 - 2018
+plot3 <- food_emissions %>% 
+  
+  filter(country == "United States") %>% 
+  
+  ggplot(food_emissions, mapping = aes(x = year, y = emissions_kt_co2e)) +
+  
+  geom_line()
+
+plot3
+```
+**Part 2b:**
+
+**1. What have you learned about your data? Have any potentially interesting patterns emerged? (5-8 sentences)**
+
+I am **definitely** going to need to need to pare down this dataset to be able to show more meaningful results. These are the first plots I have used to explore the data so I kept things simple, but they didn't show much in the way of patterns. There are a couple hundred countries in the dataset, so I won't be able to show them all without producing a very busy plot! When I did filter down the data to just the United States, it was really easy to see what was happening with the emission levels. I think it would be interested to take the top 10 or so emitting countries and see if there are patterns to show there.
+
+**2. In HW #1, you outlined some questions that you wanted to answer using these data. Have you made any strides towards answering those questions? If yes, how so? If no, what next steps do you need to take (e.g. I need to create X plot type, I still need to track down Y data, I need to restructure existing data so that you can visualize it in Z ways, etc.)? (8-12 sentences)**
+
+In HW #1, one of the questions I was interested in exploring was how GHG emissions have changed by country over time. I think I have made strides towards answering this, but need to decide which countries I would like to look more closely at because it won't be useful to look at them all. In order to do this, I need to create a new df where I add an additional data wrangling step where I use slice_max() to choose how many of the top countries to keep in my analysis. I also mentioned seeing if the resulting trend was correlated with GDP or population change. I haven't tracked down this data yet, but I know it exists!
+
+In addition to including the top emitters (idea mentioned above in #1), it could be interested to look into what countries had the biggest changes between 1990 and 2018. I could maybe display this as a dumbbell plot to show the range of emissions from 1990-2018. To make the dumbbell plot, I would need to filter the data to only include the two years at the end of the range. I'm not quite sure how to use code to help me determine which country had the biggest change yet though.
+
+**3. What challenges do you foresee encountering with your data? These can be data wrangling and / or visualization challenges. (4-6 sentences)**
+
+I think most of my challenges will come from working with a large dataset. I will need to be targeted in the questions I want to explore with the data or else I think there won't be anything very interesting to show. I also think it will be challenging to choose how I want to visualize my data because I have so many choices to choose from! I haven't loaded in and cleaned all csv files yet, so that leaves a lot more options to explore.
