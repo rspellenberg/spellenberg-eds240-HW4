@@ -1,0 +1,545 @@
+---
+title: "A World of Difference: How Food System Emissions Are Distributed Globally  "
+author: "Rachel Spellenberg"
+date: "February 24, 2024"
+format:
+  html:
+    embed-resources: true
+    toc: true
+    code-fold: true
+---
+
+For this infographic, I was interested in three questions:
+
+1. What countries have the highest total food system emissions?
+2. What countries have the highest per capita food system emissions?
+3. Is there a relationship between total Land Use and Land Use Change (LULUC) and per capita consumption emissions?
+
+I used two datasets to answer the above questions:
+
+1. I accessed the EDGAR-FOOD data set from the March 24, 2021 edition of Data is Plural linked on the assignment page. I used the country name, year (1990-2018), food system stage, and emissions in kt of CO2 equivalent for the infographic. 
+2. I accessed population data from the World Bank to be able to calculate per capita emissions. This data set included population and year (1990-2018) for the five countries I was highlighting in my infographic. 
+
+To answer the first question, I decided to make a world map where I could color the top five emitting countries in a color I could use throughout the whole infographic. This served as helpful context for the viewer to visualize the locations I was focusing on and a way to keep color consistent throughout the page. For the second question, I went with a bar graph because it was the most straightforward way to present the information. I did try a few more advanced chart types, but it was clearer to leave as a bar chart. To answer the third question, I created two radar plots because it was a great way to see the difference between LULUC and consumption while also being a visually appealing chart. I limited as much text as I could on my charts because I knew I was going to be adding annotations to my infographic. Because I was keeping color consistent throughout, I knew I could get rid of legends. For themes, I tried to remove as much as I could that was not necessary to understanding the information on the infographic. For colors and typography, I kept it consistent throughout the infographic. I chose colors that were easy to tell apart and checked them with the "Let's Get Colorblind" extension on Google Chrome. I chose "Nunito" font since it had good readability on the page. To avoid information overload, I ended up deleting a couple plots that I originally intended to include. I realized it was more important to have enough space to have my plots big enough, while also leaving some blank space. I tried to have each question answered as a section of the infographic so the viewers eye naturally moves through it rather than jumping around. All the questions I was exploring in this infographic were very related, so it was simplest to center my primary message in the title and subtitle of the infographic. As for DEI, I tried to call attention to the fact that the countries that have emissions from LULUC are exporting those goods, while the countries with the highest per capita consumption emissions are importing those goods. I can't definitively say the cause, but I think it is important to highlight because if you only look at total emissions it is easy to miss some of the nuance. 
+
+With all this being said, I didn't have a clear idea on how my infographic would come together until I started arranging my exploratory plots in a Google slide to test the layout. Once I was looking at things next to each other I found a clearer direction in what plots I should include and where. 
+
+
+
+
+```{r}
+  # include png of my infographic to render in html
+  knitr::include_graphics("pictures/RSpellenberg_infographic_hw4.png")
+```
+
+### Packages and Data
+
+```{r, warning=FALSE, message=FALSE}
+# loading packages ----
+library(tidyverse)
+library(janitor)
+library(here)
+library(maps)
+library(fmsb)
+library(ggtext)
+library(showtext)
+
+# read in data ----
+food_emissions_raw <- read_csv(here("data/EDGAR-FOOD_v6_GHG FOOD system emi.csv"))
+
+population_raw <- read_csv(here("data/population-data-worldbank.csv"))
+
+food_sector_emissions_raw <- read_csv(here("data/EDGAR-FOOD_v6_FOOD emi by sector .csv"), skip = 3)
+```
+
+
+### Data Wrangling
+
+```{r, warning=FALSE, message=FALSE}
+# data wrangling ----------
+
+# tidying up EDGAR dataset for food emissions by country 1990-2018 ----
+
+food_emissions <- food_emissions_raw %>% 
+  
+  # snake case column headers
+  clean_names() %>% 
+  
+  # tidy up!
+  pivot_longer(cols = 3:31,
+               names_to = "year",
+               values_to = "emissions_kt_co2e") %>% 
+  
+  # removing country code variable
+  select(-country_code_a3) %>% 
+  
+  # rename first first column
+  rename(country = name) %>% 
+  
+  # remove y_ from each observation and change class to numeric
+  mutate(year = as.numeric(str_remove_all(year, "y_"))) %>% 
+  
+  # round the values in the emissions_kt_co2e column
+  mutate(emissions_kt_co2e = round(emissions_kt_co2e, 2)) %>% 
+  
+  # filtering for 5 top emitters (by total emissions)
+  filter(country == "China" | country == "Brazil" | country == "United States" | country == "India" | country == "Indonesia") %>% 
+  
+  # add in data for the rest of the world's population and emissions in 2018
+  add_row(country = "rest of the world", year = 2018, emissions_kt_co2e = 9270996) %>% 
+  
+  # factor the countries and 'rest of the world' for coloring in plots
+   mutate(country = factor(country, levels = c("China", "Brazil", "United States", "India", "Indonesia", "rest of the world")))
+
+
+# tidying population dataset from World Bank to use for per capita calculations ----
+
+population <- population_raw %>% 
+  
+  # snake case column headers
+  clean_names() %>% 
+  
+  # selecting desired columns
+  select(country_name, 5:29) %>% 
+  
+  # rename column name to 'country'
+  rename(country = country_name) %>% 
+  
+  # tidy up!
+  pivot_longer(cols = 2:26,
+               names_to = "year",
+               values_to = "population") %>% 
+  
+  # clean up year variable to be YYYY format and change to numeric
+  mutate(year = as.numeric(substr(year, 9, 12))) %>% 
+
+  # add observation to include population of the rest of the world beyond the 5 countries highlighted in the infographic
+ add_row(country = "rest of the world", year = 2018, population = 4107954888)
+
+
+  # creating df for plots that include per capita data ------------
+
+  # joining population and food system data into one df
+  per_capita_emissions <- merge(food_emissions, population, by = c("country", "year"), all.x = TRUE) %>%
+
+  # adding per capita emissions
+  mutate(per_capita_emissions = emissions_kt_co2e/population)
+
+
+# tidying EDGAR food emissions by sector data for radar plots ----------
+
+food_sector_emi <- food_sector_emissions_raw %>% 
+  
+  # snake case column headers
+  clean_names() %>% 
+  
+  # selecting desired columns
+  select(name, dev_country, food_system_stage, 7:35) %>% 
+  
+  # renaming 'name' to 'country'
+  rename(country = name) %>% 
+  
+  # tidy up!
+  pivot_longer(cols = 4:32,
+               names_to = "year",
+               values_to = "emissions") %>% 
+  
+  # remove y_ from each observation and change class to numeric
+  mutate(year = as.numeric(str_remove_all(year, "y_"))) %>% 
+  
+  # converting emissions to numeric class
+  mutate(emissions = as.numeric(emissions)) %>% 
+  
+  # only using data for 2018
+  filter(year == 2018) %>% 
+  
+  # filtering for top 5 countries
+  filter(country == "China" |
+         country == "Brazil" |
+         country == "United States" |
+         country == "India" |
+         country == "Indonesia")  %>% 
+  
+  # renaming food system stages
+  mutate(food_system_stage = case_when(
+      food_system_stage == "Consumption" ~ "CONS",
+      food_system_stage == "End_of_Life" ~ "EOL",
+      food_system_stage == "LULUC (Production)" ~ "LULUC",
+      food_system_stage == "Packaging" ~ "PACK",
+      food_system_stage == "Processing" ~ "PROC",
+      food_system_stage == "Production" ~ "PROD",
+      food_system_stage == "Retail" ~ "RET",
+      food_system_stage == "Transport" ~ "TRAN")) %>%  
+  
+  # grouping data by country and food system stage
+  group_by(country, food_system_stage) %>%
+
+  # summing emissions of grouped observations
+  summarize(total_emissions = sum(emissions)) 
+
+  # creating df for 2018 population ---
+  pop_2018 <- population %>% 
+  
+    # filtering for 2018
+    filter(year == 2018) %>% 
+    
+    # excluding "rest of the world"
+    filter(country != "rest of the world")
+
+
+  # creating df that combines food sector emissions and population for 2018 ---
+  food_emi_2018_pc <- full_join(food_sector_emi, pop_2018) %>% 
+
+    # grouping data by country, food system stage, and popluation
+    group_by(country, food_system_stage, population) %>%
+  
+    # summing emissions based on grouped observations
+    summarize(total_emissions = sum(total_emissions)) %>% 
+    
+    # create new column that calculates per capita emissions
+    mutate(per_cap_emi = total_emissions/population)
+  
+  
+# --------------------dfs for radar plots --------------------
+
+
+# df for consumption radar plot ----------
+
+  # consumption radar plot ---
+  radar_pc_pop <- population %>% 
+    
+    # filtering for 2018
+    filter(year == 2018) %>% 
+    
+    # removing "rest of the world"
+    filter(country != "rest of the world")
+  
+  # creating df that only includes consumption emissions data ---
+  food_sector_emi_pc <- food_sector_emi %>% 
+    
+    # filtering for only consumption
+    filter(food_system_stage == "CONS")
+    
+  # joining above dfs to combine food section emissions and population
+  cons_pc_emissions <- full_join(food_sector_emi_pc, radar_pc_pop) %>% 
+    
+    # calculating per capita consumption emissions 
+    mutate(pc_emissions = total_emissions/population)
+  
+  # df for consumption radar plot (wider data) -----
+  cons_radar <- cons_pc_emissions %>% 
+    
+    # keeping two columns: country and per capita emissions
+    select(country, pc_emissions) %>% 
+    
+    # wider data format for radar plot 
+    pivot_wider(names_from = country,
+                values_from = pc_emissions)
+
+  # adding in 0.00015 for max in radarplot -----
+  br_cons_max <- data.frame(country = "Brazil", pc_emissions = 0.00015)
+  ch_cons_max <- data.frame(country = "China", pc_emissions = 0.00015)
+  india_cons_max <- data.frame(country = "India", pc_emissions = 0.00015)
+  ind_cons_max <- data.frame(country = "Indonesia", pc_emissions = 0.00015)
+  us_cons_max <- data.frame(country = "United States", pc_emissions = 0.00015)
+  
+  # joining above dfs into one for maximum radar plot values
+  cons_radar_max <- rbind(br_cons_max, ch_cons_max, india_cons_max, ind_cons_max, us_cons_max) %>% 
+    
+    # wider data format for radar plot
+    pivot_wider(names_from = country,
+                values_from = pc_emissions)
+  
+  # adding in 0 for min in radarplot -----
+  br_cons_min <- data.frame(country = "Brazil", pc_emissions = 0)
+  ch_cons_min <- data.frame(country = "China", pc_emissions = 0)
+  india_cons_min <- data.frame(country = "India", pc_emissions = 0)
+  ind_cons_min <- data.frame(country = "Indonesia", pc_emissions = 0)
+  us_cons_min <- data.frame(country = "United States", pc_emissions = 0)
+  
+  # joining above dfs into one for minimum radar plot values
+  cons_radar_min <- rbind(br_cons_min, ch_cons_min, india_cons_min, ind_cons_min, us_cons_min) %>% 
+    
+    # wider data format for radar plot
+    pivot_wider(names_from = country,
+                values_from = pc_emissions)
+  
+  # put it all together ------
+  cons_radar_final <- rbind(cons_radar_max, cons_radar_min, cons_radar) %>% 
+    
+    # adding spaces to headers to adjust spacing on radar plot
+    rename("             United States" = "United States",
+           "China  " = "China")
+
+
+# df for LULUC radar plot ----------
+
+  # df for LULUC radar plot (wider data) -----
+
+ luluc_radar <- food_sector_emi %>% 
+    
+    # filtering to only include LULUC emissions
+    filter(food_system_stage == "LULUC") %>% 
+    
+    # keeping two columns: country and total_emissions
+    select(country, total_emissions) %>% 
+    
+    # wider data format for radar plots
+    pivot_wider(names_from = country,
+                values_from = total_emissions) %>% 
+    
+    # add observation to include LULUC for United States
+    mutate("United States" = 0)
+
+  # adding in 772000 for max in radarplot -----
+  br_luluc_max <- data.frame(country = "Brazil", total_emissions = 772000)
+  ch_luluc_max <- data.frame(country = "China", total_emissions = 772000)
+  india_luluc_max <- data.frame(country = "India", total_emissions = 772000)
+  ind_luluc_max <- data.frame(country = "Indonesia", total_emissions = 772000)
+  us_luluc_max <- data.frame(country = "United States", total_emissions = 772000)
+  
+  # joining above dfs into one for maximum radar plot values
+  luluc_radar_max <- rbind(br_luluc_max, ch_luluc_max, india_luluc_max, ind_luluc_max, us_luluc_max) %>% 
+    
+    # wider data format for radat plot
+    pivot_wider(names_from = country,
+                values_from = total_emissions)
+  
+  # adding in 0 for min in radarplot -----
+  br_luluc_min <- data.frame(country = "Brazil", total_emissions = 0)
+  ch_luluc_min <- data.frame(country = "China", total_emissions = 0)
+  india_luluc_min <- data.frame(country = "India", total_emissions = 0)
+  ind_luluc_min <- data.frame(country = "Indonesia", total_emissions = 0)
+  us_luluc_min <- data.frame(country = "United States", total_emissions = 0)
+  
+  # joining above dfs into one for minimum radar plot values
+  luluc_radar_min <- rbind(br_luluc_min, ch_luluc_min, india_luluc_min, ind_luluc_min, us_luluc_min) %>% 
+    
+    # wider data format for radat plot
+    pivot_wider(names_from = country,
+                values_from = total_emissions)
+
+ # put it all together ------
+  luluc_radar_final <- rbind(luluc_radar_max, luluc_radar_min, luluc_radar) %>%     
+    
+  # adding spaces to headers to djust spacing on radar plot
+    rename("             United States" = "United States",
+           "China  " = "China")
+```
+
+### Plots
+```{r, warning=FALSE, message=FALSE, output = FALSE}
+
+# creating theme for all plots ------
+  my_pal1 <- c("China" = "#F26419",
+            "Brazil" = "#FFD23F", 
+            "United States" = "#AA78A6",
+            "India" = "#49A078", 
+            "Indonesia" = "#0a94f5")
+
+  my_pal2 <- c("China" = "#F26419",
+            "Brazil" = "#FFD23F", 
+            "United States" = "#AA78A6",
+            "India" = "#49A078", 
+            "Indonesia" = "#0a94f5",
+            "rest of the world" = "#CCCCCC")
+
+# font for plots -----
+  font <- font_add_google(name = "Nunito", family = "nunito")
+
+# ---------- bar chart for per capita emissions in 2018 -------------
+
+# start of saving as png
+png(file = "pictures/bar.png", units = "in", width = 15, height = 12, res=300, bg = 'transparent')
+
+  per_capita_plot <- per_capita_emissions %>% 
+  
+  # only using 2018 data
+  filter(year == 2018) %>%
+  
+  # removing "rest of the world" from bar chart
+  filter(country != "rest of the world") %>% 
+
+  ggplot() +
+  
+  # building bar chart
+  geom_col(aes(x = reorder(country, per_capita_emissions), y = per_capita_emissions), fill = my_pal1) +
+  
+  # adding country names as labels within the bar chart
+  geom_text(aes(x = country, y = per_capita_emissions, label = country), hjust = 1.1, size = 11.5, fontface = "bold", family = "nunito", color = "#1B2529") +
+  
+  # moving y-axis to the right so that it ends up on top once flipped. Adding "kt CO2e" after each x-axis label so that I can remove axis title in infographic
+  scale_y_continuous(position = "right", labels = scales::label_number(accuracy = 0.002, scale = 1, suffix = "\nkt CO2e"), limits = c(0, 0.008)) +
+  
+  coord_flip() +
+  
+  # adding title
+  labs(title = "Per Capita Food System Emissions") +
+  
+  # adjusting look of plot ---
+  theme(plot.title = element_text(face = "bold", family = "nunito", 
+                                  size = 30, color = "white",
+                                  hjust = 0.5, margin = margin(0, 50, 50, 50)),
+        plot.margin = margin(t = 10, r = 10, b = 10, l = 10),
+        panel.background = element_rect(fill = "#1B2529"),
+        plot.background = element_rect(fill = "#1B2529"),
+        panel.grid = element_line(linetype = "blank"),
+        axis.title = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.ticks.x = element_line(color = "white"),
+        axis.text.x = element_text(face = "bold", 
+                              family = "nunito", 
+                              size = 25, 
+                              color = "white"))
+
+
+  per_capita_plot
+  
+  # end of saving as png
+  dev.off()
+
+# ---------- radar plots -------------
+  
+
+# per capita consumption radar plot ------
+  
+  # saving as png start
+  png(file = "pictures/consumption_radar.png", units = "in", width = 15, height = 12, res=300, bg = 'transparent')  
+  
+  # building radar chart (for pasting into infographic to have more control over labels and fonts)
+  radarchart(cons_radar_final, pcol = "gray95", pfcol = scales::alpha("gray95", 0.75), plwd = 2, plty = 1,
+           
+           # customize the grid
+           cglcol = "white", cglty = 1, cglwd = 0.8,
+           
+           # customize the axes
+           axislabcol = "white",
+           
+           #variable labels
+           vlcex = 2, vlabels = NULL, caxislabels = NULL, title = NULL)
+  
+  # saving as png end
+  dev.off()
+
+
+# total LULUC radar plot ------
+  
+  # saving as png start
+  png(file = "pictures/luluc_radar.png", units = "in", width = 15, height = 12, res=300, bg = 'transparent')  
+  
+  # building radar chart (for pasting into infographic to have more control over labels and fonts)
+  radarchart(luluc_radar_final, pcol = "gray95", pfcol = scales::alpha("gray95", 0.75), plwd = 2, plty = 1,
+           
+           # customize the grid
+           cglcol = "white", cglty = 1, cglwd = 0.8,
+           
+           # customize the axes
+           axislabcol = "white",
+           
+           #variable labels
+           vlcex = 2, vlabels = NULL, caxislabels = NULL, title = NULL)
+  
+  # saving as png end
+  dev.off()
+
+  
+  # ----------- map for center of infographic -----------
+  # code for building map in ggplot from Sarah Penir; edited to fit aesthetic for infographic
+  
+  # creating df for map -----
+  world <- map_data("world") %>% 
+    
+    # removing subregion column
+    select(-subregion) %>% 
+    
+    # creating new column for the countries I want to highlight on my map
+    mutate(map = case_when(
+      region == "China" ~ "China",
+      region == "Brazil" ~ "Brazil",
+      region == "USA" ~ "United States",
+      region == "India" ~ "India",
+      region == "Indonesia" ~ "Indonesia"))
+  
+  # creating df for all countries I'm NOT highlighting in my map  
+  world_filtered_rotw <- world %>% 
+    
+    filter(region != "China") %>%
+    filter(region != "Brazil") %>% 
+    filter(region != "USA") %>% 
+    filter(region != "India") %>% 
+    filter(region != "Indonesia") %>% 
+    
+    # populating column with "rest of the world" to be able to match gray to the rest of my infographic
+    mutate(map = "rest of the world")
+  
+  # creating df with the 5 countries I'm highlighting in my map/infographic 
+  world_filtered_top5 <- world %>% 
+    
+    filter(map == "China" |
+           map == "Brazil" |
+           map == "United States" |
+           map == "India" | 
+           map == "Indonesia")
+  
+  # joining together 2 dfs so that map column has been fully populated with the 6 categories I have colors for
+  world_final <- full_join(world_filtered_top5, world_filtered_rotw)
+  
+  # map viz ---
+  
+  # saving as png start
+  png(file = "pictures/map.png",  bg = 'transparent')
+  
+  map <- ggplot() +
+    
+    geom_polygon(data = world_final, aes(x=long, y = lat, group = group, fill = map)) + 
+    
+    scale_fill_manual(values = my_pal2) +
+    
+    coord_fixed(1.3) +
+    
+    #get rid of axes and background
+    theme_void() +
+    
+    # changing bacground color to match infographic
+    theme(legend.position = "none",
+          panel.background = element_rect(fill = "#1B2529"),
+          plot.background = element_rect(fill = "#1B2529"))
+  
+  map
+  
+  # saving as png end
+  dev.off()
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+
+# code chunk to render plots in html ------
+
+ # including to render bar chart in html
+  knitr::include_graphics("pictures/bar.png")
+
+  # including to render radar chart in html
+  knitr::include_graphics("pictures/consumption_radar.png")
+  
+  # including to render radar chart in html
+  knitr::include_graphics("pictures/luluc_radar.png")
+  
+  # including to render map in html
+  knitr::include_graphics("pictures/map.png")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
